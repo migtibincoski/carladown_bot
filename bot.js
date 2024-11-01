@@ -1,6 +1,6 @@
 require("dotenv").config();
 const Discord = require("discord.js");
-const ytdl = require("ytdl-core");
+const ytdl = require("@distube/ytdl-core");
 const client = new Discord.Client({
   intents: [
     Discord.GatewayIntentBits.Guilds,
@@ -9,11 +9,15 @@ const client = new Discord.Client({
     Discord.GatewayIntentBits.DirectMessages,
   ],
 });
+const ffmpeg = require("ffmpeg-static");
 const fs = require("node:fs");
 const path = require("node:path");
+const cp = require("node:child_process");
+
+const console = require("./services/console");
 
 client.once(Discord.Events.ClientReady, () => {
-  console.log(
+  console.info(
     "O bot " +
       client.user.tag +
       " (" +
@@ -31,7 +35,7 @@ client.once(Discord.Events.ClientReady, () => {
     if ("data" in command && "execute" in command) {
       client.commands.push(command.data.toJSON());
     } else {
-      console.log(
+      console.warn(
         `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`
       );
     }
@@ -40,7 +44,7 @@ client.once(Discord.Events.ClientReady, () => {
   const rest = new Discord.REST().setToken(process.env.DISCORD_BOT_TOKEN);
   (async () => {
     try {
-      console.log(
+      console.info(
         `Started refreshing ${client.commands.length} application (/) commands.`
       );
 
@@ -49,7 +53,7 @@ client.once(Discord.Events.ClientReady, () => {
         { body: client.commands }
       );
 
-      console.log(
+      console.success(
         `Successfully reloaded ${data.length} application (/) commands.`
       );
     } catch (error) {
@@ -63,7 +67,7 @@ client.once(Discord.Events.ClientReady, () => {
       .then((results) => {
         client.user.setActivity(
           `${results.reduce((acc, guildCount) => acc + guildCount, 0)} guilds`,
-          { type: Discord.ActivityType.Watching }
+          { type: Discord.ActivityType.Listening }
         );
       })
       .catch(console.error);
@@ -99,7 +103,7 @@ client.on(Discord.Events.InteractionCreate, async (interaction) => {
 });
 
 client.on(Discord.Events.GuildCreate, (guild) => {
-  console.log(
+  console.info(
     '[INFO] Adicionado ao servidor "' + guild.name + '" (' + guild.id + ")."
   );
 });
@@ -112,82 +116,113 @@ const cors = require("cors");
 const app = express();
 const database = require("./database");
 
-app.use(cors());
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
 app.set("view engine", "ejs");
 
 app.listen(8080, () => {});
+
+app.get("/", (req, res) => {
+  res.send("Hello World!");
+});
 
 app.get("/api/download_mp4", async (req, res) => {
   try {
     let url =
       "https://www.youtube.com/watch?v=" +
       (await database.getURL(req.query.id, false)).videoID;
-    console.log(url);
-    console.log(await database.getURL(req.query.id, false));
-    if (!ytdl.validateURL(url)) {
-      return res.sendStatus(400);
-    }
-    const { videoDetails } = await ytdl.getInfo(url);
-    let title = `${videoDetails.title} | ${videoDetails.author.name}`;
-    await ytdl.getBasicInfo(
-      url,
+
+    if (!ytdl.validateURL(url))
+      return res.sendStatus(400).json({
+        error: "Invalid URL",
+      });
+
+    const video = await ytdl.getInfo(url);
+    video.formats.filter(
+      (format) =>
+        format.container === "mp4" && format.hasVideo && format.hasAudio
+    );
+
+    let title = `${video.videoDetails.title} | ${video.videoDetails.author.name}`;
+
+    title = title.replace(/[^\x00-\x7F]/g, "");
+
+    res.header("Content-Disposition", `attachment;  filename=${title}.mp4`);
+    let videoFile = ytdl(url, { filter: "videoonly" });
+    let audioFile = ytdl(url, { filter: "audioonly", highWaterMark: 1 << 25 });
+
+    const ffmpegProcess = cp.spawn(
+      ffmpeg,
+      [
+        "-i",
+        `pipe:3`,
+        "-i",
+        `pipe:4`,
+        "-map",
+        "0:v",
+        "-map",
+        "1:a",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "libmp3lame",
+        "-crf",
+        "27",
+        "-preset",
+        "veryfast",
+        "-movflags",
+        "frag_keyframe+empty_moov",
+        "-f",
+        "mp4",
+        "-loglevel",
+        "error",
+        "-",
+      ],
       {
-        format: "mp4",
-      },
-      (err, info) => {
-        title = info.player_response.videoDetails.title.replace(
-          /[^\x00-\x7F]/g,
-          ""
-        );
+        stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
       }
     );
 
-    res.header("Content-Disposition", `attachment; filename="${title}.mp4"`);
-    ytdl(url, {
-      format: "mp4",
-    }).pipe(res);
-  } catch (err) {
-    console.error(err);
+    videoFile.pipe(ffmpegProcess.stdio[3]);
+    audioFile.pipe(ffmpegProcess.stdio[4]);
+    ffmpegProcess.stdio[1].pipe(res);
+  } catch (error) {
+    console.error(error);
+    // res.sendStatus(500).json({ error });
   }
 });
 
 app.get("/api/download_mp3", async (req, res, next) => {
   try {
-    let url =
-      "https://www.youtube.com/watch?v=" +
-      (await database.getURL(req.query.id, true)).videoID;
-    console.log(url);
-    console.log(await database.getURL(req.query.id, true));
-    if (
-      !ytdl.validateURL(url) ||
-      (await database.getURL(req.query.id, true)).error != null
-    ) {
+    const databaseRequest = await database.getURL(req.query.id, true);
+    if (!databaseRequest || !databaseRequest.videoID) {
       return res.sendStatus(400);
     }
+
+    let url = "https://www.youtube.com/watch?v=" + databaseRequest.videoID;
+    if (!ytdl.validateURL(url)) return res.sendStatus(400);
+
     const { videoDetails } = await ytdl.getInfo(url);
     let title = `${videoDetails.title} | ${videoDetails.author.name}`;
 
-    await ytdl.getBasicInfo(
-      url,
-      {
-        format: "mp4",
-      },
-      (err, info) => {
-        if (err) throw err;
-        title = info.player_response.videoDetails.title.replace(
-          /[^\x00-\x7F]/g,
-          ""
-        );
-      }
+    const basicInfo = await ytdl.getBasicInfo(url);
+    title = basicInfo.player_response.videoDetails.title.replace(
+      /[^\x00-\x7F]/g,
+      ""
     );
 
     res.header("Content-Disposition", `attachment; filename="${title}.mp3"`);
-    ytdl(url, {
-      format: "mp3",
-      filter: "audioonly",
-    }).pipe(res);
+
+    const stream = ytdl(url, { format: "mp3", filter: "audioonly" });
+    stream.pipe(res);
   } catch (err) {
     console.error(err);
+    res.sendStatus(500);
   }
 });
 
