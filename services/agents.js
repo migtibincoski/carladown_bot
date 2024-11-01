@@ -1,4 +1,5 @@
 const ytdl = require("@distube/ytdl-core");
+require("dotenv").config();
 
 module.exports = {
   getAgents: function () {
@@ -7,7 +8,7 @@ module.exports = {
 
     const agents = [];
 
-    agentsBuffer[0].forEach((agent) => {
+    agentsBuffer.forEach((agent) => {
       const data = ytdl.createAgent(agent);
       agents.push(data);
     });

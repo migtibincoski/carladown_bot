@@ -108,6 +108,17 @@ client.on(Discord.Events.GuildCreate, (guild) => {
   console.info(
     '[INFO] Adicionado ao servidor "' + guild.name + '" (' + guild.id + ")."
   );
+
+  fetch(
+    `https://discord.com/api/webhooks/1301784003979776030/${process.env.DISCORD_WEBHOOK_TOKEN}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        content: `Adicionado ao servidor "${guild.name}" (${guild.id}).`,
+        username: "CarlaDown | GuildCreate",
+      })
+    }
+  );
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);
@@ -155,7 +166,6 @@ app.get("/api/download_mp4", async (req, res) => {
 
     title = title.replace(/[^\x00-\x7F]/g, "");
 
-    res.header("Content-Disposition", `attachment;  filename=${title}.mp4`);
     let videoFile = ytdl(url, { filter: "videoonly" });
     let audioFile = ytdl(url, { filter: "audioonly", highWaterMark: 1 << 25 });
 
@@ -193,10 +203,16 @@ app.get("/api/download_mp4", async (req, res) => {
 
     videoFile.pipe(ffmpegProcess.stdio[3]);
     audioFile.pipe(ffmpegProcess.stdio[4]);
+
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="' + title + '.mp4"'
+    );
+    res.header("Content-Type", "video/mp4");
     ffmpegProcess.stdio[1].pipe(res);
   } catch (error) {
     console.error(error);
-    // res.sendStatus(500).json({ error });
+    res.sendStatus(500).json({ error });
   }
 });
 
