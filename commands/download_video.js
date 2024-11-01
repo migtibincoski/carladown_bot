@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, InteractionCollector } = require("discord.js");
-const ytdl = require("ytdl-core");
+const ytdl = require("@distube/ytdl-core");
 const fs = require("node:fs");
 const path = require("node:path");
 const database = require("../database");
@@ -17,12 +17,13 @@ module.exports = {
         .setRequired(true)
     ),
   execute: async (interaction) => {
+    await interaction.deferReply();
     let videoURL = interaction.options.data.find(
       (option) => option.name === "youtube_url"
     ).value;
 
     if (!ytdl.validateURL(videoURL)) {
-      await interaction.reply({
+      await interaction.editReply({
         content:
           "O URL informado não é do YouTube. Tente novamente com uma URL correta.",
         ephemeral: true,
@@ -39,11 +40,11 @@ module.exports = {
       false
     );
     if (!request.error) {
-      interaction.reply({
+      interaction.editReply({
         content: "Vídeo baixado! Link para baixar: " + request.shortLink,
       });
     } else {
-      interaction.reply({
+      interaction.editReply({
         content:
           "Deu algum problema ao baixar o vídeo. Aqui está o problema: ```\n" +
           request.error +

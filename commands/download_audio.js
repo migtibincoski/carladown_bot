@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, InteractionCollector } = require("discord.js");
-const ytdl = require("ytdl-core");
+const ytdl = require("@distube/ytdl-core");
 const fs = require("node:fs");
 const path = require("node:path");
 const database = require("../database");
@@ -17,12 +17,13 @@ module.exports = {
         .setRequired(true)
     ),
   execute: async (interaction) => {
+    await interaction.deferReply();
     let videoURL = interaction.options.data.find(
       (option) => option.name === "youtube_url"
     ).value;
 
     if (!ytdl.validateURL(videoURL)) {
-      await interaction.reply({
+      await interaction.editReply({
         content:
           "O URL informado não é do YouTube. Tente novamente com uma URL correta.",
         ephemeral: true,
@@ -35,21 +36,24 @@ module.exports = {
         "https://www.youtube.com/watch?v=" +
         new URL(videoURL).pathname.split("/")[1];
 
-    const request = await database.createURL(
-      new URL(videoURL).searchParams.get("v"),
-      true
-    );
-    if (!request.error) {
-      interaction.reply({
-        content: "Áudio baixado! Link para baixar: " + request.shortLink,
+    console.debug(videoURL);
+
+    database
+      .createURL(new URL(videoURL).searchParams.get("v"), true)
+      .then((request) => {
+        if (!request.error) {
+          interaction.editReply({
+            content: "Áudio baixado! Link para baixar: " + request.shortLink,
+          });
+        } else {
+          console.info("with error!");
+          interaction.editReply({
+            content:
+              "Deu algum problema ao baixar o áudio. Aqui está o problema: ```\n" +
+              request.error +
+              "```",
+          });
+        }
       });
-    } else {
-      interaction.reply({
-        content:
-          "Deu algum problema ao baixar o áudio. Aqui está o problema: ```\n" +
-          request.error +
-          "```",
-      });
-    }
   },
 };
