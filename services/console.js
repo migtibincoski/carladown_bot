@@ -17,4 +17,5 @@ module.exports = {
   success: function (message) {
     console.log(`\x1b[0;32m${message}\x1b[0m`);
   },
+  originalLog: console.log,
 };

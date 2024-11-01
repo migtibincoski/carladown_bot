@@ -16,6 +16,8 @@ const cp = require("node:child_process");
 
 const console = require("./services/console");
 
+const { getAgents } = require("./services/agents");
+
 client.once(Discord.Events.ClientReady, () => {
   console.info(
     "O bot " +
@@ -132,6 +134,7 @@ app.get("/", (req, res) => {
 });
 
 app.get("/api/download_mp4", async (req, res) => {
+  const agent = getAgents()[Math.floor(Math.random() * getAgents().length)];
   try {
     let url =
       "https://www.youtube.com/watch?v=" +
@@ -142,7 +145,7 @@ app.get("/api/download_mp4", async (req, res) => {
         error: "Invalid URL",
       });
 
-    const video = await ytdl.getInfo(url);
+    const video = await ytdl.getInfo(url, { agent });
     video.formats.filter(
       (format) =>
         format.container === "mp4" && format.hasVideo && format.hasAudio
@@ -198,6 +201,8 @@ app.get("/api/download_mp4", async (req, res) => {
 });
 
 app.get("/api/download_mp3", async (req, res, next) => {
+  const agent = getAgents()[Math.floor(Math.random() * getAgents().length)];
+
   try {
     const databaseRequest = await database.getURL(req.query.id, true);
     if (!databaseRequest || !databaseRequest.videoID) {
@@ -207,10 +212,10 @@ app.get("/api/download_mp3", async (req, res, next) => {
     let url = "https://www.youtube.com/watch?v=" + databaseRequest.videoID;
     if (!ytdl.validateURL(url)) return res.sendStatus(400);
 
-    const { videoDetails } = await ytdl.getInfo(url);
+    const { videoDetails } = await ytdl.getInfo(url, { agent });
     let title = `${videoDetails.title} | ${videoDetails.author.name}`;
 
-    const basicInfo = await ytdl.getBasicInfo(url);
+    const basicInfo = await ytdl.getBasicInfo(url, { agent });
     title = basicInfo.player_response.videoDetails.title.replace(
       /[^\x00-\x7F]/g,
       ""
