@@ -12,19 +12,18 @@
     "ffmpeg-static": "^5.2.0",
     "mongodb": "^5.7.0"
   },
-  "name": "ytdown_bot",
-  "description": "**YTDown Bot**",
+  "name": "carladown_box",
+  "description": "**CarlaDown Bot**",
   "version": "1.0.0",
   "main": "index.js",
   "devDependencies": {},
   "scripts": {
-    "test": "echo \"No test command especified.\"",
-    "run": "node index.js",
+    "start": "node index.js",
     "dev": "clear && npx nodemon"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MigPlayer6032/ytdown_bot.git"
+    "url": "git+https://github.com/migtibincoski/carladown_bot.git"
   },
   "keywords": [
     "bot",
@@ -42,7 +41,7 @@
   "author": "Miguel Tibincoski",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/MigPlayer6032/ytdown_bot/issues"
+    "url": "https://github.com/migtibincoski/carladown_bot/issues"
   },
-  "homepage": "https://github.com/MigPlayer6032/ytdown_bot#readme"
+  "homepage": "https://github.com/migtibincoski/carladown_bot#readme"
 }
