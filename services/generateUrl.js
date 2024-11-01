@@ -17,16 +17,18 @@ module.exports = {
 
     var href = base_url + "?r=" + btoa(encodeURI(base_href));
 
-    fetch(
-      `https://discord.com/api/webhooks/1301784003979776030/${process.env.DISCORD_WEBHOOK_TOKEN}`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          content: `Link criado: ${href}`,
-          username: "CarlaDown | NewShortLink",
-        }),
-      }
-    );
+    if (process.env.IS_PRODUCTION.toString().toLowerCase() == "true") {
+      fetch(
+        `https://discord.com/api/webhooks/1301784003979776030/${process.env.DISCORD_WEBHOOK_TOKEN}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            content: `Link criado: ${href}`,
+            username: "CarlaDown | NewShortLink",
+          }),
+        }
+      );
+    }
 
     return href;
   },

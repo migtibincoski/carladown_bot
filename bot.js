@@ -104,19 +104,25 @@ client.on(Discord.Events.InteractionCreate, async (interaction) => {
   }
 });
 
-client.on(Discord.Events.GuildCreate, (guild) => {
+client.on(Discord.Events.GuildCreate, async (guild) => {
   console.info(
     '[INFO] Adicionado ao servidor "' + guild.name + '" (' + guild.id + ")."
   );
 
-  fetch(
+  const webhook = await fetch(
     `https://discord.com/api/webhooks/1301784003979776030/${process.env.DISCORD_WEBHOOK_TOKEN}`,
     {
       method: "POST",
+      headers: {
+        "Content-type": "application/json",
+      },
       body: JSON.stringify({
         content: `Adicionado ao servidor "${guild.name}" (${guild.id}).`,
-        username: "CarlaDown | GuildCreate",
-      })
+        username:
+          (process.env.IS_PRODUCTION.toString().toLowerCase() == "true"
+            ? "CarlaDown [PROD]"
+            : "CarlaDown [DEV]") + " | GuildCreate",
+      }),
     }
   );
 });
