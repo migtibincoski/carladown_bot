@@ -19,13 +19,17 @@ const console = require("./services/console");
 const { getAgents } = require("./services/agents");
 
 client.once(Discord.Events.ClientReady, () => {
-  console.info(
-    "O bot " +
-      client.user.tag +
-      " (" +
-      client.application.id +
-      ") foi iniciado com sucesso!"
-  );
+  client.guilds.cache.forEach((guild) => {
+    console.debug(
+      '[INFO] Conected to guild "' +
+        guild.name +
+        '" (' +
+        guild.id +
+        ") (" +
+        (guild.memberCount - 1) +
+        " members)."
+    );
+  });
 
   client.commands = [];
   const foldersPath = path.join(__dirname, "commands");
@@ -64,19 +68,20 @@ client.once(Discord.Events.ClientReady, () => {
   })();
 
   setInterval(async () => {
-    const guildsCount = await client.shard.fetchClientValues(
-      "guilds.cache.size"
+    let guildsCount = await client.shard.fetchClientValues("guilds.cache.size");
+
+    let usersCount = await client.shard.broadcastEval((c) =>
+      c.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0)
     );
 
-    const usersCount = await client.shard.fetchClientValues("users.cache.size");
+    usersCount = usersCount.reduce((acc, memberCount) => acc + memberCount, 0);
+    usersCount -= guildsCount;
+
     client.user.setActivity(
       `${guildsCount.reduce(
         (acc, guildCount) => acc + guildCount,
         0
-      )} guilds and ${usersCount.reduce(
-        (acc, userCount) => acc + userCount,
-        0
-      )} users`,
+      )} guilds and ${usersCount} users`,
       { type: Discord.ActivityType.Listening }
     );
   }, 5000);
@@ -132,6 +137,10 @@ client.on(Discord.Events.GuildCreate, async (guild) => {
     }
   );
 });
+
+client.on("error", console.error);
+client.on("warn", console.warn);
+client.on("debug", console.info);
 
 client.login(process.env.DISCORD_BOT_TOKEN);
 
