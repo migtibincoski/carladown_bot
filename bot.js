@@ -63,16 +63,22 @@ client.once(Discord.Events.ClientReady, () => {
     }
   })();
 
-  setInterval(() => {
-    client.shard
-      .fetchClientValues("guilds.cache.size")
-      .then((results) => {
-        client.user.setActivity(
-          `${results.reduce((acc, guildCount) => acc + guildCount, 0)} guilds`,
-          { type: Discord.ActivityType.Listening }
-        );
-      })
-      .catch(console.error);
+  setInterval(async () => {
+    const guildsCount = await client.shard.fetchClientValues(
+      "guilds.cache.size"
+    );
+
+    const usersCount = await client.shard.fetchClientValues("users.cache.size");
+    client.user.setActivity(
+      `${guildsCount.reduce(
+        (acc, guildCount) => acc + guildCount,
+        0
+      )} guilds and ${usersCount.reduce(
+        (acc, userCount) => acc + userCount,
+        0
+      )} users`,
+      { type: Discord.ActivityType.Listening }
+    );
   }, 5000);
 });
 
@@ -134,6 +140,18 @@ const express = require("express");
 const cors = require("cors");
 const app = express();
 const database = require("./database");
+const { MongoClient, ServerApiVersion } = require("mongodb");
+
+const dbClient = new MongoClient(
+  `mongodb+srv://admin:${process.env.MONGODB_PASSWORD}@carladown.d3xwq.mongodb.net/?retryWrites=true&w=majority&appName=CarlaDown`,
+  {
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: true,
+      deprecationErrors: true,
+    },
+  }
+);
 
 app.use(
   cors({
@@ -152,10 +170,37 @@ app.get("/", (req, res) => {
 
 app.get("/api/download_mp4", async (req, res) => {
   const agent = getAgents()[Math.floor(Math.random() * getAgents().length)];
+
+  await dbClient.connect();
+  const myDB = await dbClient.db(
+    `carladown_${
+      process.env.IS_PRODUCTION.toString() == "true" ? "prod" : "dev"
+    }`
+  );
+  const myColl = await myDB.collection("mp4");
+  const query = await myColl.findOne({
+    downloadID: req.query.id,
+  });
+  if (query !== null) {
+    const data = {
+      error: null,
+      videoID: `${query.videoID}`,
+    };
+  } else {
+    const data = {
+      error: {
+        message:
+          "No video has found. The download ID (" +
+          downloadID +
+          ") is correct?",
+      },
+      videoID: null,
+    };
+    return res.status(404).json(data);
+  }
+
   try {
-    let url =
-      "https://www.youtube.com/watch?v=" +
-      (await database.getURL(req.query.id, false)).videoID;
+    let url = "https://www.youtube.com/watch?v=" + data.videoID;
 
     if (!ytdl.validateURL(url))
       return res.sendStatus(400).json({
@@ -210,46 +255,76 @@ app.get("/api/download_mp4", async (req, res) => {
     videoFile.pipe(ffmpegProcess.stdio[3]);
     audioFile.pipe(ffmpegProcess.stdio[4]);
 
-    res.setHeader(
+    res.header(
       "Content-Disposition",
       'attachment; filename="' + title + '.mp4"'
     );
     res.header("Content-Type", "video/mp4");
     ffmpegProcess.stdio[1].pipe(res);
   } catch (error) {
-    console.error(error);
-    res.sendStatus(500).json({ error });
+    console.originalLog(error);
   }
 });
 
 app.get("/api/download_mp3", async (req, res, next) => {
   const agent = getAgents()[Math.floor(Math.random() * getAgents().length)];
 
+  await dbClient.connect();
+  const myDB = await dbClient.db(
+    `carladown_${
+      process.env.IS_PRODUCTION.toString() == "true" ? "prod" : "dev"
+    }`
+  );
+  const myColl = await myDB.collection("mp3");
+  const query = await myColl.findOne({
+    downloadID: req.query.id,
+  });
+  let data = {};
+  if (query !== null) {
+    data = {
+      error: null,
+      videoID: `${query.videoID}`,
+    };
+  } else {
+    return res.status(404).json({
+      error: {
+        message:
+          "No video has found. The download ID (" +
+          downloadID +
+          ") is correct?",
+      },
+      videoID: null,
+    });
+  }
+
   try {
-    const databaseRequest = await database.getURL(req.query.id, true);
-    if (!databaseRequest || !databaseRequest.videoID) {
-      return res.sendStatus(400);
-    }
+    let url = "https://www.youtube.com/watch?v=" + data.videoID;
 
-    let url = "https://www.youtube.com/watch?v=" + databaseRequest.videoID;
-    if (!ytdl.validateURL(url)) return res.sendStatus(400);
+    if (!ytdl.validateURL(url))
+      return res.json({
+        error: "Invalid URL",
+      });
 
-    const { videoDetails } = await ytdl.getInfo(url, { agent });
-    let title = `${videoDetails.title} | ${videoDetails.author.name}`;
+    const video = await ytdl.getInfo(url, { agent });
 
-    const basicInfo = await ytdl.getBasicInfo(url, { agent });
-    title = basicInfo.player_response.videoDetails.title.replace(
-      /[^\x00-\x7F]/g,
-      ""
+    let title = `${video.videoDetails.title} | ${video.videoDetails.author.name}`;
+
+    title = title.replace(/[^\x00-\x7F]/g, "");
+
+    let audioFile = ytdl(url, {
+      agent,
+      filter: "audioonly",
+      highWaterMark: 1 << 25,
+    });
+
+    res.header(
+      "Content-Disposition",
+      'attachment; filename="' + title + '.mp3"'
     );
-
-    res.header("Content-Disposition", `attachment; filename="${title}.mp3"`);
-
-    const stream = ytdl(url, { format: "mp3", filter: "audioonly" });
-    stream.pipe(res);
-  } catch (err) {
-    console.error(err);
-    res.sendStatus(500);
+    res.header("Content-Type", "video/mp3");
+    audioFile.pipe(res);
+  } catch (error) {
+    console.originalLog(error);
   }
 });
 
