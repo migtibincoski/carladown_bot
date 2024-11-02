@@ -190,13 +190,14 @@ app.get("/api/download_mp4", async (req, res) => {
   const query = await myColl.findOne({
     downloadID: req.query.id,
   });
+  let data = {};
   if (query !== null) {
-    const data = {
+    data = {
       error: null,
       videoID: `${query.videoID}`,
     };
   } else {
-    const data = {
+    data = {
       error: {
         message:
           "No video has found. The download ID (" +
