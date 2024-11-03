@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const ytdl = require("@distube/ytdl-core");
+const { getAuthor } = require("@distube/ytdl-core/lib/info-extras");
 const { MongoClient, ServerApiVersion } = require("mongodb");
 
 const client = new MongoClient(
@@ -17,12 +18,12 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("download_video")
     .setDescription(
-      "Send me the YouTube link and I'll give you the audio to download."
+      "Send me the YouTube link and I'll give you the video to download."
     )
     .addStringOption((option) =>
       option
         .setName("youtube_url")
-        .setDescription("The YouTube video URL to download the audio.")
+        .setDescription("The YouTube video URL to download the video.")
         .setRequired(true)
     ),
   execute: async (interaction) => {
@@ -35,19 +36,20 @@ module.exports = {
     if (!ytdl.validateURL(videoURL)) {
       await interaction.editReply({
         content:
-          "O URL informado não é do YouTube. Tente novamente com uma URL correta.",
-        ephemeral: true,
+          "The URL provided is not from YouTube or the link is broken. Try again with a correct URL.",
       });
       return;
     }
 
-    if (videoURL.includes("youtu.be/"))
-      videoURL =
-        "https://www.youtube.com/watch?v=" +
-        new URL(videoURL).pathname.split("/")[1];
-
     const videoID = ytdl.getURLVideoID(videoURL);
-    console.log("Creating URL for videoID: " + videoID);
+
+    console.log("Creating URL for video: " + ytdl.getURLVideoID(videoURL));
+
+    const videoInfo = (await ytdl.getInfo(videoURL)).videoDetails;
+
+    videoInfo.thumbnails.sort((a, b) => {
+      return b.height - a.height;
+    });
 
     try {
       await client.connect();
@@ -65,9 +67,65 @@ module.exports = {
             error: null,
             shortLink: alreadyHaveThisVideo.shortLink,
           };
+
           await interaction.editReply({
-            content:
-              "Vídeo já disponível! Link para baixar: " + request.shortLink,
+            content: `<@${interaction.user.id}>`,
+            tts: false,
+            embeds: [
+              {
+                id: 652627557,
+                title: `${videoInfo.title}`,
+                description: videoInfo.description
+                  ? `\`\`\`${videoInfo.description}\`\`\``
+                  : undefined,
+                color: 27957,
+                fields: [
+                  {
+                    id: 430795494,
+                    name: "Views",
+                    value: `${videoInfo.viewCount || "not avaliable"}`,
+                    inline: true,
+                  },
+                  {
+                    id: 89801635,
+                    name: "Likes",
+                    value: `${videoInfo.likes || "not avaliable"}`,
+                    inline: true,
+                  },
+                ],
+                author: {
+                  name: "Download link avaliable!",
+                },
+                url: `${request.shortLink}`,
+                image: {
+                  url: `${videoInfo.thumbnails[0].url}`,
+                },
+                footer: {
+                  text: `${videoInfo.author.name || videoInfo.author}`,
+                  image: `${videoInfo.author.thumbnails[0].url}`,
+                },
+              },
+            ],
+            components: [
+              {
+                id: 701444722,
+                type: 1,
+                components: [
+                  {
+                    id: 154376095,
+                    type: 2,
+                    style: 5,
+                    label: "DOWNLOAD VIDEO NOW!",
+                    action_set_id: "806424063",
+                    url: `${request.shortLink}`,
+                    emoji: {
+                      name: "📁",
+                      animated: false,
+                    },
+                  },
+                ],
+              },
+            ],
           });
           return;
         } else {
@@ -81,7 +139,7 @@ module.exports = {
           };
           await interaction.editReply({
             content:
-              "Deu algum problema ao baixar o vídeo. Aqui está o problema: ```\n" +
+              "There was a problem downloading the video. Here is the problem: ```\n" +
               request.error.message +
               "```",
           });
@@ -95,7 +153,7 @@ module.exports = {
       if (!link.match(new RegExp("^https?://"))) {
         interaction.editReply({
           content:
-            "Deu algum problema ao baixar o áudio. Aqui está o problema: ```O link não é válido.```",
+            "There was a problem downloading the video. Here is the problem: ```The link is not valid.```",
         });
         return;
       }
@@ -115,18 +173,72 @@ module.exports = {
 
       if (!request.error) {
         await myColl.insertOne({
-          videoID,
           downloadID,
+          videoID,
           shortLink: request.shortLink,
         });
 
         await interaction.editReply({
-          content: "Vídeo baixado! Link para baixar: " + request.shortLink,
+          content: `<@${interaction.user.id}>`,
+          tts: false,
+          embeds: [
+            {
+              id: 652627557,
+              title: `${videoInfo.title}`,
+              description: `\`\`\`${videoInfo.description}\`\`\``,
+              color: 27957,
+              fields: [
+                {
+                  id: 430795494,
+                  name: "Views",
+                  value: `${videoInfo.viewCount}`,
+                  inline: true,
+                },
+                {
+                  id: 89801635,
+                  name: "Likes",
+                  value: `${videoInfo.likes}`,
+                  inline: true,
+                },
+              ],
+              author: {
+                name: "Download link avaliable!",
+              },
+              url: `${request.shortLink}`,
+              image: {
+                url: `${videoInfo.thumbnails[0].url}`,
+              },
+              footer: {
+                text: `${videoInfo.author.name || videoInfo.author}`,
+                image: `${videoInfo.author.thumbnails[0].url}`,
+              },
+            },
+          ],
+          components: [
+            {
+              id: 701444722,
+              type: 1,
+              components: [
+                {
+                  id: 154376095,
+                  type: 2,
+                  style: 5,
+                  label: "DOWNLOAD MP4 NOW!",
+                  action_set_id: "806424063",
+                  url: `${request.shortLink}`,
+                  emoji: {
+                    name: "📁",
+                    animated: false,
+                  },
+                },
+              ],
+            },
+          ],
         });
       } else {
         await interaction.editReply({
           content:
-            "Deu algum problema ao baixar o vídeo. Aqui está o problema: ```\n" +
+            "There was a problem downloading the video. Here is the problem: ```\n" +
             request.error +
             "```",
         });
@@ -134,7 +246,7 @@ module.exports = {
     } catch (err) {
       await interaction.editReply({
         content:
-          "Deu algum problema ao baixar o vídeo. Aqui está o problema: ```\n" +
+          "There was a problem downloading the video. Here is the problem: ```\n" +
           err.message +
           "```",
       });
