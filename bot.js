@@ -150,6 +150,9 @@ const cors = require("cors");
 const app = express();
 const database = require("./database");
 const { MongoClient, ServerApiVersion } = require("mongodb");
+const { Webhook } = require("@top-gg/sdk");
+
+const webhook = new Webhook(process.env.TOPGG_WEBHOOK_AUTH);
 
 const dbClient = new MongoClient(
   `mongodb+srv://admin:${process.env.MONGODB_PASSWORD}@carladown.d3xwq.mongodb.net/?retryWrites=true&w=majority&appName=CarlaDown`,
@@ -177,6 +180,10 @@ app.get("/", (req, res) => {
   res.send("Hello World!");
 });
 
+app.get("/download", (req, res) => {
+  res.json(req.query);
+});
+
 app.get("/api/download_mp4", async (req, res) => {
   const agent = getAgents()[Math.floor(Math.random() * getAgents().length)];
 
@@ -201,7 +208,7 @@ app.get("/api/download_mp4", async (req, res) => {
       error: {
         message:
           "No video has found. The download ID (" +
-          downloadID +
+          req.query.id +
           ") is correct?",
       },
       videoID: null,
@@ -300,7 +307,7 @@ app.get("/api/download_mp3", async (req, res, next) => {
       error: {
         message:
           "No video has found. The download ID (" +
-          downloadID +
+          req.query.id +
           ") is correct?",
       },
       videoID: null,
@@ -338,6 +345,101 @@ app.get("/api/download_mp3", async (req, res, next) => {
   }
 });
 
-app.get("/a265d7c96e5198da2e9336e524ca1e08.html", (req, res) => {
-  res.render("./shrtfly_verification.ejs");
+app.get("/api/getVideoInfo", async (req, res) => {
+  try {
+    const agent = getAgents()[Math.floor(Math.random() * getAgents().length)];
+
+    await dbClient.connect();
+    const myDB = await dbClient.db(
+      `carladown_${
+        process.env.IS_PRODUCTION.toString() == "true" ? "prod" : "dev"
+      }`
+    );
+
+    if (!req.query.downloadType)
+      return res.status(400).json({
+        error: {
+          code: "MISSING_QUERY_PARAMETER",
+          message: 'The "downloadType" query parameter is required.',
+        },
+        result: null,
+      });
+
+    if (req.query.downloadType !== "mp3" && req.query.downloadType !== "mp4")
+      return res.status(400).json({
+        error: {
+          code: "INVALID_QUERY_PARAMETER",
+          message:
+            'The "downloadType" query parameter must be "mp3" for audio or "mp4" for video.',
+        },
+        result: null,
+      });
+
+    if (!req.query.id)
+      return res.status(400).json({
+        error: {
+          code: "MISSING_QUERY_PARAMETER",
+          message: 'The "id" query parameter is required.',
+        },
+        result: null,
+      });
+
+    const myColl = await myDB.collection(`${req.query.downloadType}`);
+    const query = await myColl.findOne({
+      downloadID: req.query.id,
+    });
+
+    if (query == null)
+      return res.status(404).json({
+        error: {
+          message:
+            "No video has found. The download ID (" +
+            req.query.id +
+            ") is correct?",
+        },
+        videoID: null,
+      });
+
+    if (!ytdl.validateID(query.videoID)) {
+      return res.status(404).json({
+        error: {
+          message:
+            "No video has found. The download ID (" +
+            req.query.id +
+            ") is correct?",
+        },
+        videoID: null,
+      });
+    }
+
+    const result = await ytdl.getBasicInfo(
+      `https://youtube.com/watch?v=${query.videoID}`,
+      { agent }
+    );
+
+    return res.json({
+      error: null,
+      result: result.videoDetails,
+    });
+  } catch (error) {
+    console.originalLog(error);
+    return res.status(500).json({
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        message: "An error occurred while processing this request.",
+      },
+      result: null,
+    });
+  }
+});
+
+app.post(
+  "/api/webhook/topgg",
+  webhook.listener((vote) => {
+    console.log(vote);
+  })
+);
+
+app.get("/download", (req, res) => {
+  res.render("./download.ejs");
 });
